@@ -1,0 +1,17 @@
+{
+    "id": "keyboardFlag",
+    "name": "Keyboard Layout Flag",
+    "description": "Shows the current keyboard layout with its country flag; click to switch layout",
+    "version": "1.0.0",
+    "author": "umbe",
+    "icon": "keyboard",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./KeyboardFlagWidget.qml",
+    "settings": "./KeyboardFlagSettings.qml",
+    "requires_dms": ">=2.0.0",
+    "permissions": [
+        "settings_read",
+        "settings_write"
+    ]
+}
