@@ -1,0 +1,18 @@
+{
+    "id": "findPointer",
+    "name": "Find Pointer",
+    "description": "Double-tap Ctrl to dim every monitor and spotlight the mouse pointer with a shrinking circle; ESC closes it",
+    "version": "1.0.0",
+    "author": "umbe",
+    "icon": "my_location",
+    "type": "daemon",
+    "capabilities": ["ipc"],
+    "component": "./FindPointerDaemon.qml",
+    "settings": "./FindPointerSettings.qml",
+    "requires_dms": ">=2.0.0",
+    "compositors": ["hyprland"],
+    "permissions": [
+        "settings_read",
+        "settings_write"
+    ]
+}
