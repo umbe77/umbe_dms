@@ -1,0 +1,18 @@
+{
+    "id": "windowSwitcher",
+    "name": "Window Switcher",
+    "description": "Alt-Tab switcher with live thumbnails that cycles the windows of the current workspace, most recently used first",
+    "version": "1.0.0",
+    "author": "umbe",
+    "icon": "tab",
+    "type": "daemon",
+    "capabilities": ["ipc"],
+    "component": "./WindowSwitcherDaemon.qml",
+    "settings": "./WindowSwitcherSettings.qml",
+    "requires_dms": ">=2.0.0",
+    "compositors": ["hyprland"],
+    "permissions": [
+        "settings_read",
+        "settings_write"
+    ]
+}

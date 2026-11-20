@@ -7,6 +7,7 @@ DankMaterialShell (2.x) bar widgets. Each subdirectory is one plugin.
 | `hyprLayout/`   | Hyprland Layout      | Tiling layout of the workspace on each bar's monitor |
 | `keyboardFlag/` | Keyboard Layout Flag | Current keyboard layout with its country flag        |
 | `findPointer/`  | Find Pointer         | Double-tap Ctrl to spotlight the mouse pointer (daemon) |
+| `windowSwitcher/` | Window Switcher    | Alt+Tab between the windows of the current workspace (daemon) |
 
 ## Install
 
@@ -98,3 +99,40 @@ IPC: `dms ipc call findPointer tap|show|hide|toggle|status`.
 - **Start radius** / **End radius** (px)
 - **Animation duration** (ms)
 - **Accent ring** around the disc
+
+---
+
+## Window Switcher (`windowSwitcher`)
+
+A daemon (no bar widget). Hold Alt and press Tab to cycle through the windows of the
+**current workspace**, most recently used first. A row of live thumbnails is shown on
+the focused monitor. Releasing Alt focuses the selected window. Hyprland only.
+
+- **Alt+Tab** / **Alt+Shift+Tab**: next / previous window (the first press selects the previous window)
+- **Release Alt**, **Enter** or a click on a thumbnail: switch to it
+- **Esc** or a click outside the panel: cancel
+
+A quick Alt+Tab switches straight to the previous window without the switcher flashing up
+(see *Show delay*).
+
+### Keybind
+
+```sh
+dms keybinds set hyprland "ALT + Tab"       "exec dms ipc call windowSwitcher next"   --desc "Window switcher"
+dms keybinds set hyprland "ALT SHIFT + Tab" "exec dms ipc call windowSwitcher prev"   --desc "Window switcher (back)"
+dms keybinds set hyprland "ALT + Alt_L"     "exec dms ipc call windowSwitcher commit" --flags rt --desc "Window switcher commit"
+```
+
+The third bind is what switches when you release Alt, so it's required. It needs both
+flags: `r` (fire on release) and `t` (transparent). Without `t`, Hyprland skips the Alt
+release bind because Tab was pressed while Alt was held. The switcher can't see the
+release itself: Alt was already down when it took keyboard focus, so Hyprland never
+sends that key's release to it.
+
+IPC: `dms ipc call windowSwitcher next|prev|commit|cancel|status`.
+
+### Settings
+
+- **Thumbnail height** (px)
+- **Show delay** (ms)
+- **Window titles** under the thumbnails
