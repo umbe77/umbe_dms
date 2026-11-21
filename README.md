@@ -162,6 +162,36 @@ click on it collapses or expands the group. The list updates live from `docker e
 with a slower full refresh as a fallback. **Esc** or a click outside closes the window,
 and **F5** refreshes it.
 
+### Keyboard
+
+The window is fully keyboard-driven (vim style); a recap of the keys is shown at its
+bottom.
+
+| List | |
+|---|---|
+| `j` / `k` (`↓` / `↑`) | next / previous item (group headers and containers) |
+| `}` / `{` | next / previous group |
+| `gg` / `G` (Home / End) | first / last |
+| `Ctrl+d` / `Ctrl+u` | half page down / up |
+| `h` / `l` (`←` / `→`) | fold / unfold the group |
+| `Enter` | logs (on a group header: fold / unfold) |
+| `s` / `x` / `r` | start / stop / restart the container, or the whole group on a header |
+| `e` | shell into the container |
+| `d`, then `y` or `Enter` | delete (`n` / Esc cancels) |
+| `R` / `F5` | refresh |
+| `q` / `Esc` | close |
+
+| Logs | |
+|---|---|
+| `j` / `k`, `Ctrl+d` / `Ctrl+u` | scroll a line / half page |
+| `gg` / `G` | top / end (`G` resumes following) |
+| `f` | toggle follow |
+| `p` / `Space` | pause / resume |
+| `c` / `y` | clear / copy all |
+| `e` | shell |
+| `r` | reconnect after the stream ended |
+| `q` / `h` / `Esc` | back to the list |
+
 Your user needs access to the Docker socket (usually through the `docker` group). The
 plugin id is `dockerStacks` so it doesn't clash with the third-party `dockerManager`
 plugin.

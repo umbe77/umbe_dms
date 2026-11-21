@@ -46,6 +46,112 @@ PluginComponent {
 
     readonly property int runningCount: root.containers.filter(c => c.state === "running").length
 
+    // Keyboard selection, keyed by identity ("g:<project>" / "c:<id>") so it
+    // survives refreshes and reordering
+    property string selectedKey: ""
+
+    // Visible items in display order: group headers and the rows of expanded groups
+    readonly property var flatItems: {
+        const items = [];
+        for (const g of root.groups) {
+            items.push({ kind: "group", key: "g:" + g.key, group: g });
+            if (root.collapsed[g.key])
+                continue;
+            for (const c of g.containers)
+                items.push({ kind: "container", key: "c:" + c.id, c: c, group: g });
+        }
+        return items;
+    }
+    readonly property int selectedIndex: root.flatItems.findIndex(i => i.key === root.selectedKey)
+    readonly property var selectedItem: root.selectedIndex >= 0 ? root.flatItems[root.selectedIndex] : null
+    property int lastSelectedIndex: 0
+
+    onSelectedIndexChanged: {
+        if (root.selectedIndex >= 0)
+            root.lastSelectedIndex = root.selectedIndex;
+    }
+
+    // The selected item went away (deleted, or its group was collapsed): pick a neighbour
+    // Deferred so selectedIndex has been re-evaluated against the new list
+    onFlatItemsChanged: Qt.callLater(root.fixSelection)
+
+    function fixSelection() {
+        if (root.flatItems.length === 0 || root.selectedIndex >= 0)
+            return;
+        const old = root.selectedKey;
+        if (old.startsWith("c:")) {
+            const gone = root.containers.find(c => "c:" + c.id === old);
+            if (gone) {
+                // Still exists, so its group was collapsed: select the header
+                root.selectedKey = "g:" + (gone.project || "");
+                if (root.selectedIndex >= 0)
+                    return;
+            }
+        }
+        root.selectIndex(Math.min(root.lastSelectedIndex, root.flatItems.length - 1));
+    }
+
+    function selectIndex(i) {
+        if (root.flatItems.length === 0)
+            return;
+        i = Math.max(0, Math.min(root.flatItems.length - 1, i));
+        root.selectedKey = root.flatItems[i].key;
+    }
+
+    function moveSelection(delta) {
+        root.selectIndex((root.selectedIndex < 0 ? 0 : root.selectedIndex) + delta);
+    }
+
+    // Next (+1) or previous (-1) group header
+    function moveGroup(dir) {
+        const items = root.flatItems;
+        let i = root.selectedIndex < 0 ? 0 : root.selectedIndex;
+        // "{" on a row jumps to its own header first, like vim's paragraph motion
+        for (i += dir; i >= 0 && i < items.length; i += dir) {
+            if (items[i].kind === "group") {
+                root.selectIndex(i);
+                return;
+            }
+        }
+        root.selectIndex(dir > 0 ? items.length - 1 : 0);
+    }
+
+    function selectInitial() {
+        const first = root.flatItems.find(i => i.kind === "container" && i.c.state === "running")
+            ?? root.flatItems.find(i => i.kind === "container")
+            ?? root.flatItems[0];
+        root.selectedKey = first ? first.key : "";
+    }
+
+    function setCollapsed(key, value) {
+        if (!!root.collapsed[key] !== value)
+            root.toggleCollapsed(key);
+    }
+
+    // Group-wide start/stop/restart, shared by the header buttons and the keyboard
+    function groupAct(group, verb) {
+        if (!group || group.key === "")
+            return;   // no group actions on the standalone bucket
+        let ids;
+        if (verb === "start")
+            ids = group.containers.filter(c => c.state !== "running");
+        else if (verb === "stop")
+            ids = group.containers.filter(c => c.state === "running");
+        else
+            ids = group.containers;
+        root.act(verb, ids.map(c => c.id));
+    }
+
+    function actOnSelection(verb) {
+        const item = root.selectedItem;
+        if (!item)
+            return;
+        if (item.kind === "group")
+            root.groupAct(item.group, verb);
+        else
+            root.act(verb, [item.c.id]);
+    }
+
     // Compose projects sorted by name, then the standalone group
     readonly property var groups: {
         const byKey = {};
@@ -262,6 +368,8 @@ PluginComponent {
         root.screen = screen ?? root.parentScreen ?? (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null);
         root.confirmDelete = "";
         root.shown = true;
+        if (root.selectedIndex < 0)
+            root.selectInitial();
         root.refresh();
         return "opened";
     }
@@ -284,6 +392,53 @@ PluginComponent {
     }
 
     pillClickAction: () => root.toggle()
+
+    // Buttons must not take keyboard focus away from the window's key handler
+    component Btn: DIconButton {
+        focusPolicy: Qt.NoFocus
+    }
+
+    // One "keys + label" entry of the key recap
+    // (DKeycap's font size is fixed, so use a more compact cap of our own)
+    component KeyHint: Row {
+        id: hint
+        property var keys: []
+        property string label: ""
+        readonly property int fontSize: Math.max(9, Theme.fontSizeSmall - 2)
+        spacing: 3
+
+        Repeater {
+            model: hint.keys
+
+            Rectangle {
+                required property string modelData
+                anchors.verticalCenter: parent?.verticalCenter
+                implicitWidth: Math.max(capText.implicitWidth + 8, implicitHeight)
+                implicitHeight: Math.round(hint.fontSize * 1.7)
+                radius: 4
+                color: Theme.withAlpha(Theme.surfaceContainerHighest, 0.9)
+                border.width: 1
+                border.color: Theme.withAlpha(Theme.outline, 0.35)
+
+                StyledText {
+                    id: capText
+                    anchors.centerIn: parent
+                    text: parent.modelData
+                    font.pixelSize: hint.fontSize
+                    font.family: "monospace"
+                    color: Theme.primary
+                }
+            }
+        }
+
+        StyledText {
+            text: hint.label
+            leftPadding: 2
+            font.pixelSize: hint.fontSize
+            color: Theme.surfaceVariantText
+            anchors.verticalCenter: parent.verticalCenter
+        }
+    }
 
     Component.onCompleted: root.refresh()
 
@@ -323,6 +478,8 @@ PluginComponent {
                 root.error = "";
             }
             root.loaded = true;
+            if (root.selectedIndex < 0)
+                root.selectInitial();
             if (listProc.again) {
                 listProc.again = false;
                 Qt.callLater(root.refresh);
@@ -614,20 +771,195 @@ PluginComponent {
                 anchors.fill: parent
                 focus: true
 
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Escape) {
-                        event.accepted = true;
-                        if (root.logsTarget)
-                            root.closeLogs();
-                        else if (root.confirmDelete)
+                property bool pendingG: false
+
+                Timer {
+                    id: gTimer
+                    interval: 500
+                    onTriggered: keyScope.pendingG = false
+                }
+
+                // Rows per half page in the list (rows are ~54px incl. spacing)
+                function halfPage() {
+                    return Math.max(1, Math.floor(body.height / 54 / 2));
+                }
+
+                // Keep the selected item inside the list viewport
+                function ensureVisible(item) {
+                    if (!item || !body.visible)
+                        return;
+                    const p = item.mapToItem(groupsCol, 0, 0);
+                    const margin = Theme.spacingM;
+                    if (p.y - margin < body.contentY)
+                        body.contentY = Math.max(0, p.y - margin);
+                    else if (p.y + item.height + margin > body.contentY + body.height)
+                        body.contentY = Math.min(Math.max(0, body.contentHeight - body.height), p.y + item.height + margin - body.height);
+                }
+
+                function scrollLogs(dy) {
+                    const maxY = Math.max(0, logView.contentHeight - logView.height) + logView.originY;
+                    logView.contentY = Math.max(logView.originY, Math.min(maxY, logView.contentY + dy));
+                    root.logsFollow = logView.atYEnd;
+                }
+
+                function handleLogsKey(event, t, ctrl) {
+                    const line = Theme.fontSizeSmall * 1.4;
+                    if (ctrl && event.key === Qt.Key_D) {
+                        keyScope.scrollLogs(logView.height / 2);
+                    } else if (ctrl && event.key === Qt.Key_U) {
+                        keyScope.scrollLogs(-logView.height / 2);
+                    } else if (t === "j" || event.key === Qt.Key_Down) {
+                        keyScope.scrollLogs(line);
+                    } else if (t === "k" || event.key === Qt.Key_Up) {
+                        keyScope.scrollLogs(-line);
+                    } else if (t === "G" || event.key === Qt.Key_End) {
+                        root.logsFollow = true;
+                        logView.scrollToEnd();
+                    } else if (event.key === Qt.Key_Home) {
+                        root.logsFollow = false;
+                        logView.positionViewAtBeginning();
+                    } else if (t === "g") {
+                        if (keyScope.pendingG) {
+                            keyScope.pendingG = false;
+                            root.logsFollow = false;
+                            logView.positionViewAtBeginning();
+                        } else {
+                            keyScope.pendingG = true;
+                            gTimer.restart();
+                        }
+                        return true;
+                    } else if (t === "f") {
+                        root.logsFollow = !root.logsFollow;
+                        if (root.logsFollow)
+                            logView.scrollToEnd();
+                    } else if (t === "p" || event.key === Qt.Key_Space) {
+                        root.logsPaused = !root.logsPaused;
+                    } else if (t === "c") {
+                        logModel.clear();
+                    } else if (t === "y") {
+                        root.copyLogs();
+                    } else if (t === "e") {
+                        if (root.logsContainer?.state === "running")
+                            root.openShell(root.logsContainer);
+                    } else if (t === "r" && root.logsEnded) {
+                        root.startLogs();
+                    } else if (t === "q" || t === "h" || event.key === Qt.Key_Escape) {
+                        root.closeLogs();
+                    } else {
+                        return false;
+                    }
+                    return true;
+                }
+
+                function handleListKey(event, t, ctrl) {
+                    const item = root.selectedItem;
+
+                    // A pending delete only accepts confirm / cancel
+                    if (root.confirmDelete) {
+                        if (t === "y" || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                            const id = root.confirmDelete;
                             root.confirmDelete = "";
-                        else
-                            root.close();
-                    } else if (event.key === Qt.Key_F5 || (event.key === Qt.Key_R && (event.modifiers & Qt.ControlModifier))) {
-                        event.accepted = true;
+                            root.act("rm", [id]);
+                        } else if (t === "n" || t === "q" || event.key === Qt.Key_Escape) {
+                            root.confirmDelete = "";
+                        }
+                        return true;
+                    }
+
+                    if (ctrl && event.key === Qt.Key_D) {
+                        root.moveSelection(keyScope.halfPage());
+                    } else if (ctrl && event.key === Qt.Key_U) {
+                        root.moveSelection(-keyScope.halfPage());
+                    } else if (ctrl && event.key === Qt.Key_R) {
                         root.refresh();
+                    } else if (t === "j" || event.key === Qt.Key_Down) {
+                        root.moveSelection(1);
+                    } else if (t === "k" || event.key === Qt.Key_Up) {
+                        root.moveSelection(-1);
+                    } else if (t === "}") {
+                        root.moveGroup(1);
+                    } else if (t === "{") {
+                        root.moveGroup(-1);
+                    } else if (t === "G" || event.key === Qt.Key_End) {
+                        root.selectIndex(root.flatItems.length - 1);
+                    } else if (event.key === Qt.Key_Home) {
+                        root.selectIndex(0);
+                    } else if (t === "g") {
+                        if (keyScope.pendingG) {
+                            keyScope.pendingG = false;
+                            root.selectIndex(0);
+                        } else {
+                            keyScope.pendingG = true;
+                            gTimer.restart();
+                        }
+                    } else if (t === "h" || event.key === Qt.Key_Left) {
+                        if (item) {
+                            root.setCollapsed(item.group.key, true);
+                            root.selectedKey = "g:" + item.group.key;
+                        }
+                    } else if (t === "l" || event.key === Qt.Key_Right) {
+                        if (item)
+                            root.setCollapsed(item.group.key, false);
+                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                        if (item?.kind === "group")
+                            root.toggleCollapsed(item.group.key);
+                        else if (item)
+                            root.openLogs(item.c);
+                    } else if (t === "L") {
+                        if (item?.kind === "container")
+                            root.openLogs(item.c);
+                    } else if (t === "s") {
+                        root.actOnSelection("start");
+                    } else if (t === "x") {
+                        root.actOnSelection("stop");
+                    } else if (t === "r") {
+                        root.actOnSelection("restart");
+                    } else if (t === "e") {
+                        if (item?.kind === "container" && item.c.state === "running")
+                            root.openShell(item.c);
+                    } else if (t === "d") {
+                        if (item?.kind === "container" && !root.busy[item.c.id])
+                            root.confirmDelete = item.c.id;
+                    } else if (t === "R" || event.key === Qt.Key_F5) {
+                        root.refresh();
+                    } else if (t === "q" || event.key === Qt.Key_Escape) {
+                        root.close();
+                    } else {
+                        return false;
+                    }
+                    return true;
+                }
+
+                Keys.onPressed: event => {
+                    const t = event.text;
+                    const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
+                    // Any key other than a second "g" cancels a pending "gg"
+                    if (t !== "g")
+                        keyScope.pendingG = false;
+                    event.accepted = root.logsTarget
+                        ? keyScope.handleLogsKey(event, t, ctrl)
+                        : keyScope.handleListKey(event, t, ctrl);
+                }
+
+                // Clicks on rows or buttons must not leave the window without a key handler
+                onActiveFocusChanged: {
+                    if (!activeFocus && root.shown)
+                        Qt.callLater(() => keyScope.forceActiveFocus());
+                }
+
+                Connections {
+                    target: root
+                    function onSelectedKeyChanged() {
+                        Qt.callLater(() => {
+                            const item = keyScope.selectedVisual;
+                            if (item)
+                                keyScope.ensureVisible(item);
+                        });
                     }
                 }
+
+                // Delegate registered as the currently selected one
+                property var selectedVisual: null
 
                 Component.onCompleted: Qt.callLater(() => keyScope.forceActiveFocus())
             }
@@ -641,7 +973,8 @@ PluginComponent {
                 width: Math.min(960, win.width * 0.8)
                 height: root.logsTarget
                     ? win.height * 0.8
-                    : Math.min(header.height + Theme.spacingM + Math.max(body.contentHeight, 80) + pad * 2, win.height * 0.8)
+                    : Math.min(header.height + Theme.spacingM + Math.max(body.contentHeight, 80)
+                        + Theme.spacingM + hintsBar.height + pad * 2, win.height * 0.8)
                 radius: Theme.cornerRadius * 1.5
                 color: Theme.withAlpha(Theme.surfaceContainer, 0.97)
                 border.color: Theme.withAlpha(Theme.outline, 0.3)
@@ -674,7 +1007,7 @@ PluginComponent {
                             spacing: Theme.spacingS
                             clip: true
 
-                            DIconButton {
+                            Btn {
                                 iconName: "arrow_back"
                                 tooltipText: "Back (Esc)"
                                 onClicked: root.closeLogs()
@@ -712,14 +1045,14 @@ PluginComponent {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 0
 
-                            DIconButton {
+                            Btn {
                                 iconName: "sync"
                                 tooltipText: "Reconnect"
                                 visible: root.logsEnded
                                 onClicked: root.startLogs()
                             }
 
-                            DIconButton {
+                            Btn {
                                 iconName: "vertical_align_bottom"
                                 tooltipText: root.logsFollow ? "Following (scroll up to stop)" : "Follow"
                                 iconColor: root.logsFollow ? Theme.primary : Theme.surfaceVariantText
@@ -730,33 +1063,33 @@ PluginComponent {
                                 }
                             }
 
-                            DIconButton {
+                            Btn {
                                 iconName: root.logsPaused ? "play_arrow" : "pause"
                                 tooltipText: root.logsPaused ? "Resume" : "Pause"
                                 iconColor: root.logsPaused ? Theme.warning : Theme.surfaceVariantText
                                 onClicked: root.logsPaused = !root.logsPaused
                             }
 
-                            DIconButton {
+                            Btn {
                                 iconName: "delete_sweep"
                                 tooltipText: "Clear"
                                 onClicked: logModel.clear()
                             }
 
-                            DIconButton {
+                            Btn {
                                 iconName: "content_copy"
                                 tooltipText: "Copy all"
                                 onClicked: root.copyLogs()
                             }
 
-                            DIconButton {
+                            Btn {
                                 iconName: "terminal"
                                 tooltipText: "Open shell"
                                 visible: root.logsContainer?.state === "running"
                                 onClicked: root.openShell(root.logsContainer)
                             }
 
-                            DIconButton {
+                            Btn {
                                 iconName: "close"
                                 tooltipText: "Close"
                                 onClicked: root.close()
@@ -808,18 +1141,71 @@ PluginComponent {
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        DIconButton {
+                        Btn {
                             iconName: "refresh"
                             tooltipText: "Refresh (F5)"
                             onClicked: root.refresh()
                         }
 
-                        DIconButton {
+                        Btn {
                             iconName: "close"
                             tooltipText: "Close (Esc)"
                             onClicked: root.close()
                         }
                     }
+                    }
+                }
+
+                // Key recap
+                Item {
+                    id: hintsBar
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.margins: panel.pad
+                    height: hintsRow.implicitHeight + Theme.spacingS
+
+                    readonly property var hints: {
+                        if (root.logsTarget)
+                            return [
+                                [["j", "k"], "Scroll"], [["^d", "^u"], "Half page"], [["gg", "G"], "Top/End"],
+                                [["f"], "Follow"], [["p"], "Pause"], [["c"], "Clear"], [["y"], "Copy"],
+                                [["e"], "Shell"], [["q"], "Back"]
+                            ];
+                        if (root.confirmDelete)
+                            return [[["y"], "Confirm delete"], [["n"], "Cancel"]];
+                        return [
+                            [["j", "k"], "Move"], [["{", "}"], "Group"], [["gg", "G"], "Top/Bottom"],
+                            [["h", "l"], "Fold"], [["↵"], "Logs"], [["s", "x", "r"], "Start/Stop/Restart"],
+                            [["e"], "Shell"], [["d"], "Delete"], [["R"], "Refresh"], [["q"], "Close"]
+                        ];
+                    }
+
+                    Rectangle {
+                        anchors.top: parent.top
+                        width: parent.width
+                        height: 1
+                        color: Theme.withAlpha(Theme.outline, 0.2)
+                    }
+
+                    // One line; shrinks to fit on narrow screens
+                    Row {
+                        id: hintsRow
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: Theme.spacingM
+                        scale: Math.min(1, hintsBar.width / Math.max(1, implicitWidth))
+                        transformOrigin: Item.Bottom
+
+                        Repeater {
+                            model: hintsBar.hints
+
+                            KeyHint {
+                                required property var modelData
+                                keys: modelData[0]
+                                label: modelData[1]
+                            }
+                        }
                     }
                 }
 
@@ -830,8 +1216,10 @@ PluginComponent {
                     anchors.topMargin: Theme.spacingM
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.margins: panel.pad
+                    anchors.bottom: hintsBar.top
+                    anchors.leftMargin: panel.pad
+                    anchors.rightMargin: panel.pad
+                    anchors.bottomMargin: Theme.spacingS
                     radius: Theme.cornerRadius
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.6)
 
@@ -903,10 +1291,10 @@ PluginComponent {
                     anchors.topMargin: Theme.spacingM
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.bottom: parent.bottom
+                    anchors.bottom: hintsBar.top
                     anchors.leftMargin: panel.pad
                     anchors.rightMargin: panel.pad
-                    anchors.bottomMargin: panel.pad
+                    anchors.bottomMargin: Theme.spacingS
                     contentHeight: groupsCol.implicitHeight
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
@@ -959,15 +1347,40 @@ PluginComponent {
 
                                 // Group header
                                 Rectangle {
+                                    id: groupHeader
+                                    readonly property bool isSelected: root.selectedKey === "g:" + group.modelData.key
+
                                     width: parent.width
                                     height: 44
                                     radius: Theme.cornerRadius
-                                    color: Theme.surfaceContainerHigh
+                                    color: groupHeader.isSelected ? Theme.selectedContainer : Theme.surfaceContainerHigh
+
+                                    onIsSelectedChanged: {
+                                        if (groupHeader.isSelected)
+                                            keyScope.selectedVisual = groupHeader;
+                                    }
+                                    Component.onCompleted: {
+                                        if (groupHeader.isSelected)
+                                            keyScope.selectedVisual = groupHeader;
+                                    }
+
+                                    Rectangle {
+                                        visible: groupHeader.isSelected
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 3
+                                        height: parent.height - Theme.spacingS * 2
+                                        radius: 1.5
+                                        color: Theme.primary
+                                    }
 
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.toggleCollapsed(group.modelData.key)
+                                        onClicked: {
+                                            root.selectedKey = "g:" + group.modelData.key;
+                                            root.toggleCollapsed(group.modelData.key);
+                                        }
                                     }
 
                                     Row {
@@ -1044,25 +1457,25 @@ PluginComponent {
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
 
-                                        DIconButton {
+                                        Btn {
                                             iconName: "play_arrow"
                                             tooltipText: "Start all"
                                             visible: !groupActions.anyBusy && group.modelData.running < group.modelData.containers.length
-                                            onClicked: root.act("start", group.modelData.containers.filter(c => c.state !== "running").map(c => c.id))
+                                            onClicked: root.groupAct(group.modelData, "start")
                                         }
 
-                                        DIconButton {
+                                        Btn {
                                             iconName: "stop"
                                             tooltipText: "Stop all"
                                             visible: !groupActions.anyBusy && group.modelData.running > 0
-                                            onClicked: root.act("stop", group.modelData.containers.filter(c => c.state === "running").map(c => c.id))
+                                            onClicked: root.groupAct(group.modelData, "stop")
                                         }
 
-                                        DIconButton {
+                                        Btn {
                                             iconName: "restart_alt"
                                             tooltipText: "Restart all"
                                             visible: !groupActions.anyBusy
-                                            onClicked: root.act("restart", groupActions.allIds)
+                                            onClicked: root.groupAct(group.modelData, "restart")
                                         }
                                     }
                                 }
@@ -1078,14 +1491,40 @@ PluginComponent {
                                         readonly property bool isRunning: row.c.state === "running"
                                         readonly property bool isBusy: !!root.busy[row.c.id]
                                         readonly property bool confirming: root.confirmDelete === row.c.id
+                                        readonly property bool isSelected: root.selectedKey === "c:" + row.c.id
 
                                         width: group.width
                                         height: 52
                                         radius: Theme.cornerRadius
-                                        color: hover.hovered ? Theme.withAlpha(Theme.surfaceContainerHigh, 0.6) : "transparent"
+                                        color: row.isSelected ? Theme.selectedContainer
+                                            : (hover.hovered ? Theme.withAlpha(Theme.surfaceContainerHigh, 0.6) : "transparent")
+
+                                        onIsSelectedChanged: {
+                                            if (row.isSelected)
+                                                keyScope.selectedVisual = row;
+                                        }
+                                        Component.onCompleted: {
+                                            if (row.isSelected)
+                                                keyScope.selectedVisual = row;
+                                        }
 
                                         HoverHandler {
                                             id: hover
+                                        }
+
+                                        // Click selects (buttons on top still get their own clicks)
+                                        TapHandler {
+                                            onTapped: root.selectedKey = "c:" + row.c.id
+                                        }
+
+                                        Rectangle {
+                                            visible: row.isSelected
+                                            anchors.left: parent.left
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 3
+                                            height: parent.height - Theme.spacingS * 2
+                                            radius: 1.5
+                                            color: Theme.primary
                                         }
 
                                         Rectangle {
@@ -1166,42 +1605,42 @@ PluginComponent {
                                             }
 
                                             // Normal buttons
-                                            DIconButton {
+                                            Btn {
                                                 iconName: "article"
                                                 tooltipText: "Logs"
                                                 visible: !row.isBusy && !row.confirming
                                                 onClicked: root.openLogs(row.c)
                                             }
 
-                                            DIconButton {
+                                            Btn {
                                                 iconName: "terminal"
                                                 tooltipText: "Open shell"
                                                 visible: !row.isBusy && !row.confirming && row.isRunning
                                                 onClicked: root.openShell(row.c)
                                             }
 
-                                            DIconButton {
+                                            Btn {
                                                 iconName: "play_arrow"
                                                 tooltipText: "Start"
                                                 visible: !row.isBusy && !row.confirming && !row.isRunning
                                                 onClicked: root.act("start", [row.c.id])
                                             }
 
-                                            DIconButton {
+                                            Btn {
                                                 iconName: "stop"
                                                 tooltipText: "Stop"
                                                 visible: !row.isBusy && !row.confirming && row.isRunning
                                                 onClicked: root.act("stop", [row.c.id])
                                             }
 
-                                            DIconButton {
+                                            Btn {
                                                 iconName: "restart_alt"
                                                 tooltipText: "Restart"
                                                 visible: !row.isBusy && !row.confirming && row.isRunning
                                                 onClicked: root.act("restart", [row.c.id])
                                             }
 
-                                            DIconButton {
+                                            Btn {
                                                 iconName: "delete"
                                                 tooltipText: "Delete"
                                                 iconColor: Theme.error
@@ -1219,7 +1658,7 @@ PluginComponent {
                                                 anchors.verticalCenter: parent.verticalCenter
                                             }
 
-                                            DIconButton {
+                                            Btn {
                                                 iconName: "check"
                                                 tooltipText: "Confirm delete"
                                                 iconColor: Theme.error
@@ -1230,7 +1669,7 @@ PluginComponent {
                                                 }
                                             }
 
-                                            DIconButton {
+                                            Btn {
                                                 iconName: "close"
                                                 tooltipText: "Cancel"
                                                 visible: !row.isBusy && row.confirming
