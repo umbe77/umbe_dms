@@ -149,6 +149,13 @@ row shows the state, name, image, published ports and status, plus buttons for:
 
 - **Start** (stopped containers), **Stop** and **Restart** (running containers)
 - **Delete**: asks for confirmation on the row first, then runs `docker rm -f`
+- **Logs**: replaces the list with a live `docker logs -f` view of the container
+  (the last *Log history* lines, then new ones as they arrive; stderr in red).
+  Scrolling up stops following the end, and the follow button or scrolling back down
+  resumes it. You can also pause, clear, or copy everything. When the container stops
+  the stream ends and **Reconnect** reattaches. **Esc** goes back to the list.
+- **Shell** (running containers): opens your terminal with `docker exec -it` into
+  `bash`, or `sh` if the image has no bash
 
 The header of each compose group can start, stop or restart the whole project, and a
 click on it collapses or expands the group. The list updates live from `docker events`,
@@ -159,7 +166,8 @@ Your user needs access to the Docker socket (usually through the `docker` group)
 plugin id is `dockerStacks` so it doesn't clash with the third-party `dockerManager`
 plugin.
 
-IPC: `dms ipc call dockerStacks toggle|open|close|refresh|status`. These only work once
+IPC: `dms ipc call dockerStacks toggle|open|close|refresh|status`, plus
+`logs <name>` and `shell <name>` (container name or id prefix). These only work once
 the widget is on a bar. `toggle` and `open` show the window on the focused monitor. Keybind
 (`SUPER+D` is taken by the DMS dash):
 
@@ -173,3 +181,6 @@ dms keybinds set hyprland "SUPER+SHIFT+D" "exec dms ipc call dockerStacks toggle
 - **Show running count** next to the icon
 - **Show standalone containers**
 - **Fallback refresh** interval (s)
+- **Log history**: past lines loaded when opening the logs (default 200)
+- **Terminal**: terminal for shells (empty: the DMS terminal setting, then `$TERMINAL`)
+- **Terminal exec flag**: `-e` (kitty, ghostty, foot, alacritty) or `start --` (wezterm)

@@ -16,6 +16,9 @@ PluginComponent {
     readonly property bool showCount: pluginData.showCount ?? true
     readonly property bool showStandalone: pluginData.showStandalone ?? true
     readonly property int pollIntervalSec: pluginData.pollIntervalSec ?? 30
+    readonly property string terminalCmd: pluginData.terminalCmd ?? ""
+    readonly property string terminalExecFlag: pluginData.terminalExecFlag ?? "-e"
+    readonly property int logTail: pluginData.logTail ?? 200
 
     // State
     property var containers: []        // [{ id, name, image, state, status, ports, project, service, workdir }]
@@ -26,6 +29,20 @@ PluginComponent {
     property var busy: ({})            // container id -> true while an action runs
     property var collapsed: ({})       // group key -> true
     property string confirmDelete: ""  // container id awaiting delete confirmation
+
+    // Logs pane
+    readonly property int maxLogLines: 2000
+    property var logsTarget: null      // container whose logs are shown (null = list view)
+    property var logsProc: null        // current `docker logs -f` process
+    property bool logsPaused: false    // freeze the view; lines keep queueing
+    property bool logsFollow: true     // keep the view scrolled to the end
+    property bool logsEnded: false     // stream exited on its own (container stopped)
+    property var logsQueue: []         // lines waiting for the next flush (not bound)
+
+    // Live copy of the logs target, so the header status follows refreshes
+    readonly property var logsContainer: root.logsTarget
+        ? (root.containers.find(c => c.id === root.logsTarget.id) ?? root.logsTarget)
+        : null
 
     readonly property int runningCount: root.containers.filter(c => c.state === "running").length
 
@@ -112,6 +129,106 @@ PluginComponent {
             root.error = message + (details ? ": " + details : "");
     }
 
+    function shq(str) {
+        return "'" + String(str).replace(/'/g, "'\\''") + "'";
+    }
+
+    // ---- shell --------------------------------------------------------------
+
+    function openShell(c) {
+        if (!c)
+            return "nothing";
+        const term = root.terminalCmd
+            || (typeof SessionData !== "undefined" ? SessionData.resolveTerminal() : "")
+            || "kitty";
+        const flag = root.terminalExecFlag.split(/\s+/).filter(x => x.length > 0);
+        // Prefer bash, fall back to sh. Codes >= 125 mean docker exec itself failed
+        // (no shell in the image, container gone): keep the terminal open to show why.
+        const cmd = root.shq(root.dockerBin) + " exec -it " + root.shq(c.id)
+            + " sh -c 'command -v bash >/dev/null 2>&1 && exec bash || exec sh'"
+            + " || { rc=$?; if [ $rc -ge 125 ]; then echo; printf 'Press Enter to close'; read -r _; fi; }";
+        Quickshell.execDetached({ command: [term].concat(flag, ["sh", "-c", cmd]) });
+        root.close();
+        return "shell " + c.name;
+    }
+
+    // ---- logs ---------------------------------------------------------------
+
+    function openLogs(c) {
+        root.confirmDelete = "";
+        root.logsTarget = c;
+        root.logsPaused = false;
+        root.logsFollow = true;
+        root.startLogs();
+    }
+
+    function closeLogs() {
+        root.stopLogs();
+        root.logsTarget = null;
+        logModel.clear();
+        root.logsQueue = [];
+    }
+
+    function startLogs() {
+        root.stopLogs();
+        logModel.clear();
+        root.logsQueue = [];
+        root.logsEnded = false;
+        if (!root.logsTarget)
+            return;
+        const proc = logsComponent.createObject(root, {
+            command: [root.dockerBin, "logs", "-f", "--tail", String(root.logTail), root.logsTarget.id]
+        });
+        root.logsProc = proc;
+        proc.running = true;
+    }
+
+    function stopLogs() {
+        const proc = root.logsProc;
+        root.logsProc = null;
+        if (!proc)
+            return;
+        if (proc.running)
+            proc.running = false;   // its onExited destroys it
+        else
+            Qt.callLater(() => proc.destroy());
+    }
+
+    function queueLog(proc, line, isErr) {
+        if (proc !== root.logsProc)
+            return;
+        const q = root.logsQueue;
+        q.push({ line: line, err: isErr, ended: false });
+        if (q.length > root.maxLogLines)
+            q.splice(0, q.length - root.maxLogLines);
+    }
+
+    function flushLogs() {
+        const q = root.logsQueue;
+        if (q.length === 0 || root.logsPaused)
+            return;
+        root.logsQueue = [];
+        for (const item of q)
+            logModel.append(item);
+        if (logModel.count > root.maxLogLines)
+            logModel.remove(0, logModel.count - root.maxLogLines);
+    }
+
+    signal logsScrollRequested
+
+    function logsScrollToEnd() {
+        root.logsScrollRequested();
+    }
+
+    function copyLogs() {
+        const lines = [];
+        for (let i = 0; i < logModel.count; i++)
+            lines.push(logModel.get(i).line);
+        Quickshell.clipboardText = lines.join("\n");
+        if (typeof ToastService !== "undefined" && ToastService.showInfo)
+            ToastService.showInfo("Copied " + lines.length + " log lines");
+    }
+
     // ---- public actions -----------------------------------------------------
 
     function refresh() {
@@ -150,6 +267,7 @@ PluginComponent {
     }
 
     function close() {
+        root.closeLogs();
         root.shown = false;
         root.confirmDelete = "";
         return "closed";
@@ -312,6 +430,43 @@ PluginComponent {
         }
     }
 
+    ListModel {
+        id: logModel
+    }
+
+    // Batch lines so a chatty container doesn't touch the model per line
+    Timer {
+        interval: 100
+        repeat: true
+        running: !!root.logsTarget
+        onTriggered: root.flushLogs()
+    }
+
+    Component {
+        id: logsComponent
+
+        Process {
+            id: lproc
+
+            stdout: SplitParser {
+                onRead: data => root.queueLog(lproc, data, false)
+            }
+            // docker forwards the container's stderr on its own stderr
+            stderr: SplitParser {
+                onRead: data => root.queueLog(lproc, data, true)
+            }
+            onExited: {
+                if (lproc === root.logsProc) {
+                    root.logsProc = null;
+                    root.logsEnded = true;
+                    root.logsQueue.push({ line: "— stream ended —", err: false, ended: true });
+                }
+                // Never destroy a Process from inside its own signal handler
+                Qt.callLater(() => lproc.destroy());
+            }
+        }
+    }
+
     // ---- IPC ----------------------------------------------------------------
 
     IpcHandler {
@@ -332,6 +487,22 @@ PluginComponent {
         function refresh(): string {
             root.refresh();
             return "refreshing";
+        }
+
+        // Open the window on the logs of a container, by name or id prefix
+        function logs(name: string): string {
+            const c = root.containers.find(x => x.name === name || x.id.startsWith(name));
+            if (!c)
+                return "not found: " + name;
+            if (!root.shown)
+                root.open(root.focusedScreen());
+            root.openLogs(c);
+            return "logs " + c.name;
+        }
+
+        function shell(name: string): string {
+            const c = root.containers.find(x => x.name === name || x.id.startsWith(name));
+            return c ? root.openShell(c) : "not found: " + name;
         }
 
         function status(): string {
@@ -446,7 +617,9 @@ PluginComponent {
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
                         event.accepted = true;
-                        if (root.confirmDelete)
+                        if (root.logsTarget)
+                            root.closeLogs();
+                        else if (root.confirmDelete)
                             root.confirmDelete = "";
                         else
                             root.close();
@@ -466,7 +639,9 @@ PluginComponent {
 
                 anchors.centerIn: parent
                 width: Math.min(960, win.width * 0.8)
-                height: Math.min(header.height + Theme.spacingM + Math.max(body.contentHeight, 80) + pad * 2, win.height * 0.8)
+                height: root.logsTarget
+                    ? win.height * 0.8
+                    : Math.min(header.height + Theme.spacingM + Math.max(body.contentHeight, 80) + pad * 2, win.height * 0.8)
                 radius: Theme.cornerRadius * 1.5
                 color: Theme.withAlpha(Theme.surfaceContainer, 0.97)
                 border.color: Theme.withAlpha(Theme.outline, 0.3)
@@ -485,6 +660,114 @@ PluginComponent {
                     anchors.right: parent.right
                     anchors.margins: panel.pad
                     height: 36
+
+                    // Logs header
+                    Item {
+                        anchors.fill: parent
+                        visible: !!root.logsTarget
+
+                        Row {
+                            anchors.left: parent.left
+                            anchors.right: logsButtons.left
+                            anchors.rightMargin: Theme.spacingS
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.spacingS
+                            clip: true
+
+                            DIconButton {
+                                iconName: "arrow_back"
+                                tooltipText: "Back (Esc)"
+                                onClicked: root.closeLogs()
+                            }
+
+                            Rectangle {
+                                width: 10
+                                height: 10
+                                radius: 5
+                                color: root.stateColor(root.logsContainer?.state ?? "")
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            StyledText {
+                                text: root.logsContainer?.name ?? ""
+                                font.pixelSize: Theme.fontSizeLarge
+                                font.weight: Font.Bold
+                                color: Theme.surfaceText
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            StyledText {
+                                text: (root.logsContainer?.status ?? "")
+                                    + (root.logsPaused ? "  · paused" : "")
+                                    + (root.logsEnded ? "  · stream ended" : "")
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        Row {
+                            id: logsButtons
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 0
+
+                            DIconButton {
+                                iconName: "sync"
+                                tooltipText: "Reconnect"
+                                visible: root.logsEnded
+                                onClicked: root.startLogs()
+                            }
+
+                            DIconButton {
+                                iconName: "vertical_align_bottom"
+                                tooltipText: root.logsFollow ? "Following (scroll up to stop)" : "Follow"
+                                iconColor: root.logsFollow ? Theme.primary : Theme.surfaceVariantText
+                                onClicked: {
+                                    root.logsFollow = !root.logsFollow;
+                                    if (root.logsFollow)
+                                        root.logsScrollToEnd();
+                                }
+                            }
+
+                            DIconButton {
+                                iconName: root.logsPaused ? "play_arrow" : "pause"
+                                tooltipText: root.logsPaused ? "Resume" : "Pause"
+                                iconColor: root.logsPaused ? Theme.warning : Theme.surfaceVariantText
+                                onClicked: root.logsPaused = !root.logsPaused
+                            }
+
+                            DIconButton {
+                                iconName: "delete_sweep"
+                                tooltipText: "Clear"
+                                onClicked: logModel.clear()
+                            }
+
+                            DIconButton {
+                                iconName: "content_copy"
+                                tooltipText: "Copy all"
+                                onClicked: root.copyLogs()
+                            }
+
+                            DIconButton {
+                                iconName: "terminal"
+                                tooltipText: "Open shell"
+                                visible: root.logsContainer?.state === "running"
+                                onClicked: root.openShell(root.logsContainer)
+                            }
+
+                            DIconButton {
+                                iconName: "close"
+                                tooltipText: "Close"
+                                onClicked: root.close()
+                            }
+                        }
+                    }
+
+                    // List header
+                    Item {
+                        anchors.fill: parent
+                        visible: !root.logsTarget
 
                     Row {
                         anchors.left: parent.left
@@ -537,10 +820,85 @@ PluginComponent {
                             onClicked: root.close()
                         }
                     }
+                    }
+                }
+
+                // Logs view
+                Rectangle {
+                    visible: !!root.logsTarget
+                    anchors.top: header.bottom
+                    anchors.topMargin: Theme.spacingM
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.margins: panel.pad
+                    radius: Theme.cornerRadius
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.6)
+
+                    ListView {
+                        id: logView
+
+                        property bool autoScrolling: false
+
+                        anchors.fill: parent
+                        anchors.margins: Theme.spacingS
+                        model: logModel
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        reuseItems: true
+
+                        delegate: StyledText {
+                            required property string line
+                            required property bool err
+                            required property bool ended
+
+                            width: logView.width
+                            text: line
+                            textFormat: Text.PlainText
+                            wrapMode: Text.WrapAnywhere
+                            font.family: "monospace"
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: ended ? Theme.surfaceVariantText : (err ? Theme.error : Theme.surfaceText)
+                            font.italic: ended
+                        }
+
+                        function scrollToEnd() {
+                            logView.autoScrolling = true;
+                            logView.positionViewAtEnd();
+                            logView.autoScrolling = false;
+                        }
+
+                        onCountChanged: {
+                            if (root.logsFollow)
+                                Qt.callLater(logView.scrollToEnd);
+                        }
+
+                        // Scrolling up by hand stops following; back at the bottom resumes it
+                        onContentYChanged: {
+                            if (!logView.autoScrolling && (logView.moving || logView.dragging))
+                                root.logsFollow = logView.atYEnd;
+                        }
+                        onMovementEnded: root.logsFollow = logView.atYEnd
+
+                        Connections {
+                            target: root
+                            function onLogsScrollRequested() {
+                                logView.scrollToEnd();
+                            }
+                        }
+                    }
+
+                    StyledText {
+                        anchors.centerIn: parent
+                        visible: logModel.count === 0
+                        text: root.logsEnded ? "No logs" : (root.logsPaused ? "Paused" : "Waiting for logs…")
+                        color: Theme.surfaceVariantText
+                    }
                 }
 
                 Flickable {
                     id: body
+                    visible: !root.logsTarget
                     anchors.top: header.bottom
                     anchors.topMargin: Theme.spacingM
                     anchors.left: parent.left
@@ -808,6 +1166,20 @@ PluginComponent {
                                             }
 
                                             // Normal buttons
+                                            DIconButton {
+                                                iconName: "article"
+                                                tooltipText: "Logs"
+                                                visible: !row.isBusy && !row.confirming
+                                                onClicked: root.openLogs(row.c)
+                                            }
+
+                                            DIconButton {
+                                                iconName: "terminal"
+                                                tooltipText: "Open shell"
+                                                visible: !row.isBusy && !row.confirming && row.isRunning
+                                                onClicked: root.openShell(row.c)
+                                            }
+
                                             DIconButton {
                                                 iconName: "play_arrow"
                                                 tooltipText: "Start"

@@ -46,6 +46,32 @@ PluginSettings {
     }
 
     SliderSetting {
+        settingKey: "logTail"
+        label: "Log history"
+        description: "Past log lines loaded when the logs pane opens"
+        defaultValue: 200
+        minimum: 50
+        maximum: 2000
+        unit: " lines"
+    }
+
+    StringSetting {
+        settingKey: "terminalCmd"
+        label: "Terminal"
+        description: "Terminal used for container shells; empty uses the DMS terminal or $TERMINAL"
+        placeholder: "auto"
+        defaultValue: ""
+    }
+
+    StringSetting {
+        settingKey: "terminalExecFlag"
+        label: "Terminal exec flag"
+        description: "Argument(s) before the command: -e for kitty, ghostty, foot, alacritty; \"start --\" for wezterm"
+        placeholder: "-e"
+        defaultValue: "-e"
+    }
+
+    SliderSetting {
         settingKey: "pollIntervalSec"
         label: "Fallback refresh"
         description: "Full refresh interval; changes are normally picked up instantly from docker events"
