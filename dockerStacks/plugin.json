@@ -1,0 +1,18 @@
+{
+    "id": "dockerStacks",
+    "name": "Docker Stacks",
+    "description": "Shows the number of running Docker containers; click to open a window listing containers grouped by compose project, with start, stop, restart and delete",
+    "version": "1.0.0",
+    "author": "umbe",
+    "icon": "deployed_code",
+    "type": "widget",
+    "capabilities": ["dankbar-widget", "ipc"],
+    "component": "./DockerStacksWidget.qml",
+    "settings": "./DockerStacksSettings.qml",
+    "requires_dms": ">=2.0.0",
+    "permissions": [
+        "settings_read",
+        "settings_write",
+        "process"
+    ]
+}

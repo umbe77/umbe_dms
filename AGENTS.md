@@ -16,6 +16,7 @@ For documentation about the DUX shell and the DMS plugin API, use https://duxlab
 | `keyboardFlag/`   | `widget` | `KeyboardFlagWidget.qml`     | any (uses `KeyboardLayoutService`) |
 | `findPointer/`    | `daemon` | `FindPointerDaemon.qml`      | Hyprland   |
 | `windowSwitcher/` | `daemon` | `WindowSwitcherDaemon.qml`   | Hyprland   |
+| `dockerStacks/`   | `widget` | `DockerStacksWidget.qml`     | any (runs `docker`) |
 
 Each plugin directory holds:
 

@@ -8,6 +8,7 @@ DankMaterialShell (2.x) bar widgets. Each subdirectory is one plugin.
 | `keyboardFlag/` | Keyboard Layout Flag | Current keyboard layout with its country flag        |
 | `findPointer/`  | Find Pointer         | Double-tap Ctrl to spotlight the mouse pointer (daemon) |
 | `windowSwitcher/` | Window Switcher    | Alt+Tab between the windows of the current workspace (daemon) |
+| `dockerStacks/` | Docker Stacks        | Running container count; click to manage containers by compose project |
 
 ## Install
 
@@ -136,3 +137,39 @@ IPC: `dms ipc call windowSwitcher next|prev|commit|cancel|status`.
 - **Thumbnail height** (px)
 - **Show delay** (ms)
 - **Window titles** under the thumbnails
+
+---
+
+## Docker Stacks (`dockerStacks`)
+
+A bar pill that shows the Docker icon and the number of running containers. Click it to
+open a window in the middle of the screen that lists every container, grouped by compose
+project, with the containers that don't belong to a project under **Standalone**. Each
+row shows the state, name, image, published ports and status, plus buttons for:
+
+- **Start** (stopped containers), **Stop** and **Restart** (running containers)
+- **Delete**: asks for confirmation on the row first, then runs `docker rm -f`
+
+The header of each compose group can start, stop or restart the whole project, and a
+click on it collapses or expands the group. The list updates live from `docker events`,
+with a slower full refresh as a fallback. **Esc** or a click outside closes the window,
+and **F5** refreshes it.
+
+Your user needs access to the Docker socket (usually through the `docker` group). The
+plugin id is `dockerStacks` so it doesn't clash with the third-party `dockerManager`
+plugin.
+
+IPC: `dms ipc call dockerStacks toggle|open|close|refresh|status`. These only work once
+the widget is on a bar. `toggle` and `open` show the window on the focused monitor. Keybind
+(`SUPER+D` is taken by the DMS dash):
+
+```sh
+dms keybinds set hyprland "SUPER+SHIFT+D" "exec dms ipc call dockerStacks toggle" --desc "Docker containers"
+```
+
+### Settings
+
+- **Docker command**: the executable to run (`docker` by default)
+- **Show running count** next to the icon
+- **Show standalone containers**
+- **Fallback refresh** interval (s)
