@@ -15,6 +15,8 @@ For documentation about the DUX shell and the DMS plugin API, use https://duxlab
 | `hyprLayout/`     | `widget` | `HyprLayoutWidget.qml`       | Hyprland   |
 | `keyboardFlag/`   | `widget` | `KeyboardFlagWidget.qml`     | any (uses `KeyboardLayoutService`) |
 | `findPointer/`    | `daemon` | `FindPointerDaemon.qml`      | Hyprland   |
+| `focusMonitor/`   | `daemon` | `FocusMonitorDaemon.qml`     | Hyprland   |
+| `focusIndicator/` | `widget` | `FocusIndicatorWidget.qml`   | Hyprland   |
 | `windowSwitcher/` | `daemon` | `WindowSwitcherDaemon.qml`   | Hyprland   |
 | `dockerStacks/`   | `widget` | `DockerStacksWidget.qml`     | any (runs `docker`) |
 

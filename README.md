@@ -7,6 +7,8 @@ DankMaterialShell (2.x) bar widgets. Each subdirectory is one plugin.
 | `hyprLayout/`   | Hyprland Layout      | Tiling layout of the workspace on each bar's monitor |
 | `keyboardFlag/` | Keyboard Layout Flag | Current keyboard layout with its country flag        |
 | `findPointer/`  | Find Pointer         | Double-tap Ctrl to spotlight the mouse pointer (daemon) |
+| `focusMonitor/` | Focus Monitor        | Flash the focused monitor and dim the others on focus change (daemon) |
+| `focusIndicator/` | Focus Indicator    | Highlights the bar of the focused monitor |
 | `windowSwitcher/` | Window Switcher    | Alt+Tab between the windows of the current workspace (daemon) |
 | `dockerStacks/` | Docker Stacks        | Running container count; click to manage containers by compose project |
 
@@ -100,6 +102,52 @@ IPC: `dms ipc call findPointer tap|show|hide|toggle|status`.
 - **Start radius** / **End radius** (px)
 - **Animation duration** (ms)
 - **Accent ring** around the disc
+
+---
+
+## Focus Monitor (`focusMonitor`)
+
+A daemon (no bar widget). When focus moves to another monitor (keyboard
+`focusmonitor`, or the mouse crossing over), the focused monitor gets an accent frame
+and the other monitors dim. After a moment everything fades out. Switching quickly
+extends the flash instead of stacking it. Clicks pass through. Hyprland only; focus comes from the `Quickshell.Hyprland`
+singleton, so no external commands run.
+
+With one monitor connected it stays quiet unless **Flash with one monitor** is on.
+
+### Keybind (optional)
+
+To show it on demand:
+
+```sh
+dms keybinds set hyprland "SUPER + grave" "exec dms ipc call focusMonitor flash" --desc "Show focused monitor"
+```
+
+IPC: `dms ipc call focusMonitor flash|toggleDim|status`. `toggleDim` switches the
+permanent dim on or off until the next restart.
+
+### Settings
+
+- **Hold time** / **Fade out** (ms)
+- **Dimming** of the inactive monitors (%)
+- **Frame width** (px)
+- **Keep inactive monitors dimmed** all the time
+- **Flash with one monitor**
+
+---
+
+## Focus Indicator (`focusIndicator`)
+
+A bar widget that shows which monitor has focus, without any overlay. Add it to every
+bar: on the bar of the focused monitor it is drawn in the accent color (filled dot,
+bold name), on the other bars it is dimmed, or hidden. Pairs with Focus Monitor.
+Hyprland only.
+
+### Settings
+
+- **Display**: icon only (default), icon + monitor name, or monitor name only
+  (vertical bars always show the icon)
+- **Hide on unfocused monitors**
 
 ---
 

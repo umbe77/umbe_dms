@@ -1,0 +1,18 @@
+{
+    "id": "focusMonitor",
+    "name": "Focus Monitor",
+    "description": "Flash an accent frame and the monitor name on the focused monitor and dim the others when focus moves between monitors",
+    "version": "1.0.0",
+    "author": "umbe",
+    "icon": "monitor",
+    "type": "daemon",
+    "capabilities": ["ipc"],
+    "component": "./FocusMonitorDaemon.qml",
+    "settings": "./FocusMonitorSettings.qml",
+    "requires_dms": ">=2.0.0",
+    "compositors": ["hyprland"],
+    "permissions": [
+        "settings_read",
+        "settings_write"
+    ]
+}

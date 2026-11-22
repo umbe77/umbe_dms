@@ -1,0 +1,18 @@
+{
+    "id": "focusIndicator",
+    "name": "Focus Indicator",
+    "description": "Shows each bar's monitor, highlighted in the accent color on the bar of the focused monitor",
+    "version": "1.0.0",
+    "author": "umbe",
+    "icon": "monitor",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./FocusIndicatorWidget.qml",
+    "settings": "./FocusIndicatorSettings.qml",
+    "requires_dms": ">=2.0.0",
+    "compositors": ["hyprland"],
+    "permissions": [
+        "settings_read",
+        "settings_write"
+    ]
+}
