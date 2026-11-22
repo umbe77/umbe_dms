@@ -1,7 +1,7 @@
 {
     "id": "hyprLayout",
     "name": "Hyprland Layout",
-    "description": "Shows the tiling layout (dwindle, master, scrolling, monocle) of the active workspace on each bar's monitor",
+    "description": "Shows the tiling layout (dwindle, master, scrolling, monocle) of the active workspace on each bar's monitor; click to switch layout with a fuzzy-search picker",
     "version": "1.0.0",
     "author": "umbe",
     "icon": "dashboard",

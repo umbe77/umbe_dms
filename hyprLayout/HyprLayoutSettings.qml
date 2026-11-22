@@ -17,7 +17,7 @@ PluginSettings {
 
     StyledText {
         width: parent.width
-        text: "Shows the tiling layout of the active workspace on this bar's monitor."
+        text: "Shows the tiling layout of the active workspace on this bar's monitor. Click it to switch layout."
         font.pixelSize: Theme.fontSizeSmall
         color: Theme.surfaceVariantText
         wrapMode: Text.WordWrap
@@ -40,5 +40,13 @@ PluginSettings {
         label: "Capitalize name"
         description: "Show \"Scrolling\" instead of \"scrolling\""
         defaultValue: true
+    }
+
+    StringSetting {
+        settingKey: "extraLayouts"
+        label: "Extra layouts"
+        description: "Comma-separated layouts added to the click picker after the built-ins (e.g. lua:mylayout)"
+        placeholder: "lua:mylayout"
+        defaultValue: ""
     }
 }

@@ -4,7 +4,7 @@ DankMaterialShell (2.x) bar widgets. Each subdirectory is one plugin.
 
 | Directory       | Plugin               | What it shows                                        |
 |-----------------|----------------------|------------------------------------------------------|
-| `hyprLayout/`   | Hyprland Layout      | Tiling layout of the workspace on each bar's monitor |
+| `hyprLayout/`   | Hyprland Layout      | Tiling layout of the workspace on each bar's monitor; click to switch |
 | `keyboardFlag/` | Keyboard Layout Flag | Current keyboard layout with its country flag        |
 | `findPointer/`  | Find Pointer         | Double-tap Ctrl to spotlight the mouse pointer (daemon) |
 | `focusMonitor/` | Focus Monitor        | Flash the focused monitor and dim the others on focus change (daemon) |
@@ -31,10 +31,45 @@ Shows the tiling layout (`dwindle`, `master`, `scrolling`, `monocle`, …) of th
 workspace that is active on each bar's monitor. It reads Hyprland's per-workspace
 `tiledLayout` and updates on workspace/monitor focus changes and config reloads.
 
+### Switching layout
+
+Click the pill to open a picker with every layout and a fuzzy search field (type
+`scr` for `scrolling`, `mo` for `monocle`, …). Choosing a layout sets the global
+`general.layout` at runtime through `hyprctl eval`, the same thing the SUPER+SHIFT+M
+bind does, and emits the `hyprlayout,<layout>` event so every bar updates at once.
+
+| Key                          | Action                      |
+|------------------------------|-----------------------------|
+| type                         | Filter layouts              |
+| `↓` / `↑`, `Ctrl+J` / `Ctrl+K`, `Ctrl+N` / `Ctrl+P` | Move the selection |
+| `Enter` / click              | Switch to the layout        |
+| `Esc` / click outside        | Close                       |
+
+Hyprland has no request that lists its layouts, so the picker shows the built-ins
+(`dwindle`, `master`, `scrolling`, `monocle`). Add custom ones, such as Lua layouts,
+with the **Extra layouts** setting.
+
+### IPC and keybind
+
+```sh
+dms ipc call hyprLayout toggle        # open/close the picker on the focused monitor
+dms ipc call hyprLayout open
+dms ipc call hyprLayout close
+dms ipc call hyprLayout list          # comma-separated layouts
+dms ipc call hyprLayout set scrolling # switch directly
+```
+
+Optional keybind for the picker:
+
+```sh
+dms keybinds set hyprland "SUPER + SHIFT + L" "exec dms ipc call hyprLayout toggle" --desc "Pick layout"
+```
+
 ### Settings
 
 - **Display**: icon + text, icon only, or text only
 - **Capitalize name**
+- **Extra layouts**: comma-separated layouts added to the picker (e.g. `lua:mylayout`)
 
 ### Instant updates
 
