@@ -1,0 +1,19 @@
+{
+    "id": "pointerZoom",
+    "name": "Pointer Zoom",
+    "description": "Zoom the monitor under the pointer with SUPER+ALT + wheel; starting a zoom dims the monitor and closes a circle on the pointer",
+    "version": "1.0.0",
+    "author": "umbe",
+    "icon": "zoom_in",
+    "type": "daemon",
+    "capabilities": ["ipc"],
+    "component": "./PointerZoomDaemon.qml",
+    "settings": "./PointerZoomSettings.qml",
+    "requires_dms": ">=2.0.0",
+    "compositors": ["hyprland"],
+    "permissions": [
+        "settings_read",
+        "settings_write",
+        "process"
+    ]
+}

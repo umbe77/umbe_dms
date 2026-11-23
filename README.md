@@ -7,6 +7,7 @@ DankMaterialShell (2.x) bar widgets. Each subdirectory is one plugin.
 | `hyprLayout/`   | Hyprland Layout      | Tiling layout of the workspace on each bar's monitor; click to switch |
 | `keyboardFlag/` | Keyboard Layout Flag | Current keyboard layout with its country flag        |
 | `findPointer/`  | Find Pointer         | Double-tap Ctrl to spotlight the mouse pointer (daemon) |
+| `pointerZoom/`  | Pointer Zoom         | SUPER+ALT + wheel zooms the monitor under the pointer (daemon) |
 | `focusMonitor/` | Focus Monitor        | Flash the focused monitor and dim the others on focus change (daemon) |
 | `focusIndicator/` | Focus Indicator    | Highlights the bar of the focused monitor |
 | `windowSwitcher/` | Window Switcher    | Alt+Tab between the windows of the current workspace (daemon) |
@@ -133,6 +134,48 @@ IPC: `dms ipc call findPointer tap|show|hide|toggle|status`.
 ### Settings
 
 - **Double-tap window** (ms)
+- **Dimming** (%)
+- **Start radius** / **End radius** (px)
+- **Animation duration** (ms)
+- **Accent ring** around the disc
+
+---
+
+## Pointer Zoom (`pointerZoom`)
+
+A daemon (no bar widget). SUPER+ALT + mouse wheel zooms the monitor under the mouse
+pointer, centred on the pointer, using Hyprland's `cursor:zoom_factor`. When a zoom
+starts from 1x, that monitor dims and a circle closes in on the pointer to show where
+the zoom is going. Then the zoom kicks in and the overlay fades out. Later wheel steps
+just change the zoom. Scrolling back down to 1x turns zoom off. Clicks pass through.
+Hyprland only.
+
+The factor is set with `hyprctl eval` (the Lua config has no `hyprctl keyword`). The
+zoom is reset to 1x when the plugin is disabled, and a zoom left over from before a
+`dms restart` is picked up at startup.
+
+### Keybind
+
+```sh
+dms keybinds set hyprland "SUPER ALT + mouse_up"   "exec dms ipc call pointerZoom zoomIn"  --desc "Zoom in"
+dms keybinds set hyprland "SUPER ALT + mouse_down" "exec dms ipc call pointerZoom zoomOut" --desc "Zoom out"
+dms keybinds set hyprland "SUPER ALT + 0"          "exec dms ipc call pointerZoom reset"   --desc "Reset zoom"
+```
+
+If the direction feels reversed (natural scrolling), swap `mouse_up` and `mouse_down`.
+For a smooth zoom, enable Hyprland's zoom animation in `hyprland.lua`:
+
+```lua
+hl.animation({ leaf = "zoomFactor", enabled = true, speed = 7, bezier = "quick" })
+```
+
+IPC: `dms ipc call pointerZoom zoomIn|zoomOut|reset|status`, `dms ipc call pointerZoom set 2.5`.
+
+### Settings
+
+- **Zoom step** per wheel notch (%, 100% = +1x)
+- **Maximum zoom** (x)
+- **Rigid zoom**: the view stays put until the pointer reaches the edge
 - **Dimming** (%)
 - **Start radius** / **End radius** (px)
 - **Animation duration** (ms)
