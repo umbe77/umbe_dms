@@ -17,8 +17,8 @@ PluginSettings {
 
     StyledText {
         width: parent.width
-        text: "Zoom the monitor under the mouse pointer with SUPER+ALT + wheel. Starting a zoom "
-            + "dims the monitor and closes a circle on the pointer.\n\n"
+        text: "Zoom the monitor under the mouse pointer with SUPER+SHIFT + wheel. Starting a zoom "
+            + "dims the monitor and closes a circle on the pointer; the spotlight follows the pointer until the zoom is back to 1x.\n\n"
             + "Bind it in Settings → Keybinds, or from a terminal:"
         font.pixelSize: Theme.fontSizeSmall
         color: Theme.surfaceVariantText
@@ -30,9 +30,10 @@ PluginSettings {
         readOnly: true
         selectByMouse: true
         wrapMode: TextEdit.WrapAnywhere
-        text: "dms keybinds set hyprland \"SUPER ALT + mouse_up\" \"exec dms ipc call pointerZoom zoomIn\" --desc \"Zoom in\"\n"
-            + "dms keybinds set hyprland \"SUPER ALT + mouse_down\" \"exec dms ipc call pointerZoom zoomOut\" --desc \"Zoom out\"\n"
-            + "dms keybinds set hyprland \"SUPER ALT + 0\" \"exec dms ipc call pointerZoom reset\" --desc \"Reset zoom\""
+        text: "dms keybinds set hyprland \"SUPER SHIFT + mouse_up\" \"exec dms ipc call pointerZoom zoomIn\" --desc \"Zoom in\"\n"
+            + "dms keybinds set hyprland \"SUPER SHIFT + mouse_down\" \"exec dms ipc call pointerZoom zoomOut\" --desc \"Zoom out\"\n"
+            + "dms keybinds set hyprland \"SUPER SHIFT + Shift_L\" \"exec dms ipc call pointerZoom reset\" --flags rt --desc \"Reset zoom on release\"\n"
+            + "dms keybinds set hyprland \"SUPER SHIFT + Super_L\" \"exec dms ipc call pointerZoom reset\" --flags rt --desc \"Reset zoom on release\""
         font.family: "monospace"
         font.pixelSize: Theme.fontSizeSmall
         color: Theme.surfaceText
@@ -69,9 +70,19 @@ PluginSettings {
     SliderSetting {
         settingKey: "dimOpacity"
         label: "Dimming"
-        description: "How dark the monitor gets when a zoom starts"
+        description: "How dark the monitor gets while the circle closes in"
         defaultValue: 50
         minimum: 10
+        maximum: 95
+        unit: "%"
+    }
+
+    SliderSetting {
+        settingKey: "zoomedDim"
+        label: "Dimming while zoomed"
+        description: "How dark the monitor stays around the pointer while zoomed"
+        defaultValue: 50
+        minimum: 0
         maximum: 95
         unit: "%"
     }
@@ -89,7 +100,7 @@ PluginSettings {
     SliderSetting {
         settingKey: "endRadius"
         label: "End radius"
-        description: "Circle radius when the zoom kicks in"
+        description: "Disc radius while zoomed (stays the same size at every zoom level)"
         defaultValue: 80
         minimum: 20
         maximum: 300

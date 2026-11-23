@@ -1,7 +1,7 @@
 {
     "id": "pointerZoom",
     "name": "Pointer Zoom",
-    "description": "Zoom the monitor under the pointer with SUPER+ALT + wheel; starting a zoom dims the monitor and closes a circle on the pointer",
+    "description": "Zoom the monitor under the pointer with SUPER+SHIFT + wheel; starting a zoom dims the monitor and closes a circle on the pointer",
     "version": "1.0.0",
     "author": "umbe",
     "icon": "zoom_in",

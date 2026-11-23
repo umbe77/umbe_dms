@@ -7,7 +7,7 @@ DankMaterialShell (2.x) bar widgets. Each subdirectory is one plugin.
 | `hyprLayout/`   | Hyprland Layout      | Tiling layout of the workspace on each bar's monitor; click to switch |
 | `keyboardFlag/` | Keyboard Layout Flag | Current keyboard layout with its country flag        |
 | `findPointer/`  | Find Pointer         | Double-tap Ctrl to spotlight the mouse pointer (daemon) |
-| `pointerZoom/`  | Pointer Zoom         | SUPER+ALT + wheel zooms the monitor under the pointer (daemon) |
+| `pointerZoom/`  | Pointer Zoom         | SUPER+SHIFT + wheel zooms the monitor under the pointer (daemon) |
 | `focusMonitor/` | Focus Monitor        | Flash the focused monitor and dim the others on focus change (daemon) |
 | `focusIndicator/` | Focus Indicator    | Highlights the bar of the focused monitor |
 | `windowSwitcher/` | Window Switcher    | Alt+Tab between the windows of the current workspace (daemon) |
@@ -143,24 +143,34 @@ IPC: `dms ipc call findPointer tap|show|hide|toggle|status`.
 
 ## Pointer Zoom (`pointerZoom`)
 
-A daemon (no bar widget). SUPER+ALT + mouse wheel zooms the monitor under the mouse
-pointer, centred on the pointer, using Hyprland's `cursor:zoom_factor`. When a zoom
-starts from 1x, that monitor dims and a circle closes in on the pointer to show where
-the zoom is going. Then the zoom kicks in and the overlay fades out. Later wheel steps
-just change the zoom. Scrolling back down to 1x turns zoom off. Clicks pass through.
-Hyprland only.
+A daemon (no bar widget). SUPER+SHIFT + mouse wheel zooms the monitor under the mouse
+pointer, centred on the pointer, using Hyprland's `cursor:zoom_factor`. When a zoom starts from 1x, that monitor
+dims and a circle closes in on the pointer, then the zoom kicks in. The spotlight (dim,
+clear disc, accent ring) stays on and follows the pointer, across monitors too, for as
+long as you are zoomed. Later wheel steps only change the zoom, and the disc keeps the
+same size on screen at every level. It fades out when the zoom is back to 1x, either by
+scrolling down or by releasing SUPER+SHIFT. Clicks pass through. Hyprland only.
 
-The factor is set with `hyprctl eval` (the Lua config has no `hyprctl keyword`). The
+While zoomed, the pointer position is read from Hyprland's request socket about 60 times
+a second, like findPointer, so the spotlight can follow it. The factor is set with `hyprctl eval` (the Lua config has no `hyprctl keyword`). The
 zoom is reset to 1x when the plugin is disabled, and a zoom left over from before a
 `dms restart` is picked up at startup.
 
 ### Keybind
 
 ```sh
-dms keybinds set hyprland "SUPER ALT + mouse_up"   "exec dms ipc call pointerZoom zoomIn"  --desc "Zoom in"
-dms keybinds set hyprland "SUPER ALT + mouse_down" "exec dms ipc call pointerZoom zoomOut" --desc "Zoom out"
-dms keybinds set hyprland "SUPER ALT + 0"          "exec dms ipc call pointerZoom reset"   --desc "Reset zoom"
+dms keybinds set hyprland "SUPER SHIFT + mouse_up"   "exec dms ipc call pointerZoom zoomIn"  --desc "Zoom in"
+dms keybinds set hyprland "SUPER SHIFT + mouse_down" "exec dms ipc call pointerZoom zoomOut" --desc "Zoom out"
+dms keybinds set hyprland "SUPER SHIFT + Shift_L"    "exec dms ipc call pointerZoom reset" --flags rt --desc "Reset zoom on release"
+dms keybinds set hyprland "SUPER SHIFT + Super_L"    "exec dms ipc call pointerZoom reset" --flags rt --desc "Reset zoom on release"
 ```
+
+The two release binds reset the zoom as soon as you let go of SUPER+SHIFT: one fires if
+Shift is released first, the other if Super is. They need `r` (fire on release) and `t`
+(transparent; otherwise Hyprland skips the release because the wheel bind fired while
+the keys were held). `reset` does nothing when you aren't zoomed, so other SUPER+SHIFT
+shortcuts don't run `hyprctl` on release. If you'd rather keep the zoom after letting
+go, skip those two binds and use `dms ipc call pointerZoom reset` on another key.
 
 If the direction feels reversed (natural scrolling), swap `mouse_up` and `mouse_down`.
 For a smooth zoom, enable Hyprland's zoom animation in `hyprland.lua`:
@@ -176,8 +186,9 @@ IPC: `dms ipc call pointerZoom zoomIn|zoomOut|reset|status`, `dms ipc call point
 - **Zoom step** per wheel notch (%, 100% = +1x)
 - **Maximum zoom** (x)
 - **Rigid zoom**: the view stays put until the pointer reaches the edge
-- **Dimming** (%)
-- **Start radius** / **End radius** (px)
+- **Dimming** (%) while the circle closes in
+- **Dimming while zoomed** (%)
+- **Start radius** / **End radius** (px). The end radius is the disc kept while zoomed.
 - **Animation duration** (ms)
 - **Accent ring** around the disc
 
